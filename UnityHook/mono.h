@@ -4,6 +4,7 @@ typedef unsigned short guint16;
 typedef unsigned int guint32;
 typedef int gint;
 typedef gint gboolean;
+typedef unsigned int guint;
 
 typedef unsigned char uint8_t;
 typedef uint8_t mono_byte;
@@ -111,8 +112,18 @@ struct _MonoMethod {
 
 typedef struct _MonoMethod MonoMethod;
 
+struct MonoMethodDesc {
+	char *_namespace;
+	char *klass;
+	char *name;
+	char *args;
+	guint num_args;
+	gboolean include_namespace, klass_glob, name_glob;
+};
+
 typedef MonoDomain* (*tmono_domain_get) (void);
 typedef MonoAssembly* (*tmono_domain_assembly_open) (MonoDomain *domain, const char *name);
-typedef MonoImage* (*tmono_assembly_get_image) (MonoAssembly* assembly);
-typedef int (*tmono_jit_exec) (MonoDomain *domain, MonoAssembly *assembly, int argc, char *argv[]);
+typedef MonoImage* (*tmono_assembly_get_image) (MonoAssembly *assembly);
 typedef MonoObject* (*tmono_runtime_invoke) (MonoMethod *method, void *obj, void **params, MonoObject **exc);
+typedef MonoClass* (*tmono_class_from_name) (MonoImage *image, const char* name_space, const char *name);
+typedef MonoMethod* (*tmono_class_get_method_from_name) (MonoClass *klass, const char *name, int param_count);

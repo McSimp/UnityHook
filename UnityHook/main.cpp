@@ -1,16 +1,17 @@
 #include <Windows.h>
 #include <stdio.h>
-//#include <mono/mini/jit.h>
-//#include <mono/metadata/assembly.h>
-//#include <mono/metadata/class-internals.h>
 #include <detours.h>
 #include "mono.h"
 
 tmono_domain_get _mono_domain_get = NULL;
 tmono_domain_assembly_open _mono_domain_assembly_open = NULL;
 tmono_assembly_get_image _mono_assembly_get_image = NULL;
-tmono_jit_exec _mono_jit_exec = NULL;
 tmono_runtime_invoke _mono_runtime_invoke = NULL;
+tmono_class_get_method_from_name _mono_class_get_method_from_name = NULL;
+tmono_class_from_name _mono_class_from_name = NULL;
+
+typedef int (*tPlayerLoop) (int, int, int);
+tPlayerLoop pPlayerLoop = reinterpret_cast<tPlayerLoop>(0x4378D0);
 
 #define GET_MONO_FUNC(name) _ ## name = *((t ## name*)GetProcAddress(hGame, #name)); LogConsole("%s = 0x%X\n", #name, _ ## name); 
 
@@ -39,17 +40,32 @@ void LogConsole( const char *szFmt, ... )
 	delete [] szBuff;
 }
 
-MonoObject* det_mono_runtime_invoke(MonoMethod *method, void *obj, void **params, MonoObject **exc)
+bool loadedExtern = false;
+MonoMethod* method = NULL;
+
+int hkPlayerLoop(int unk1, int unk2, int unk3)
 {
 	_asm pushad;
-	LogConsole("mono_runtime_invoke on '%s'\n", method->name);
-	if(!strcmp("Update", method->name))
+	
+	if(loadedExtern)
 	{
-		//_asm popad;
-		//return NULL;
+		_mono_runtime_invoke(method, NULL, NULL, NULL);
 	}
+	else
+	{
+		MonoDomain* domain = _mono_domain_get();
+		LogConsole("MonoDomain = 0x%X\n", domain);
+
+		MonoAssembly* assembly = _mono_domain_assembly_open(domain, "InjectedManagedLib.dll");
+		MonoImage* image = _mono_assembly_get_image(assembly);
+		MonoClass* mclass = _mono_class_from_name(image, "InjectedManagedLib", "InjectedLib");
+		method = _mono_class_get_method_from_name(mclass, "DoTheThing", 0);
+
+		loadedExtern = true;
+	}
+
 	_asm popad;
-	return _mono_runtime_invoke(method, obj, params, exc);
+	return pPlayerLoop(unk1, unk2, unk3);
 }
 
 DWORD WINAPI onAttach(LPVOID lpThreadParameter)
@@ -62,32 +78,16 @@ DWORD WINAPI onAttach(LPVOID lpThreadParameter)
 	GET_MONO_FUNC(mono_domain_get)
 	GET_MONO_FUNC(mono_domain_assembly_open)
 	GET_MONO_FUNC(mono_assembly_get_image)
-	GET_MONO_FUNC(mono_jit_exec)
 	GET_MONO_FUNC(mono_runtime_invoke)
+	GET_MONO_FUNC(mono_class_get_method_from_name)
+	GET_MONO_FUNC(mono_class_from_name)
 
-	/*
-	LogConsole("Overwriting thing...\n");
-	DWORD* addrOfAddrOfFunc = (DWORD*)GetProcAddress(hGame, "mono_runtime_invoke");
-	DWORD dwProtect;
-	if(VirtualProtect(addrOfAddrOfFunc, sizeof(DWORD), PAGE_EXECUTE_READWRITE, &dwProtect) != 0)
-	{
-		LogConsole("Doing the overwriting...\n");
-		(*addrOfAddrOfFunc) = (DWORD)&det_mono_runtime_invoke;
-	}
-	LogConsole("Finished overwriting\n");
-	*/
-	//_asm int 3;
-	//MonoDomain* domain = (*_mono_domain_get)();
-	//LogConsole("domain = 0x%X\n", domain);
-	/*
-	MonoAssembly* assembly = _mono_domain_assembly_open(domain, "ConsoleApplication1.exe");
-	if(!assembly)
-	{
-		LogConsole("mono_domain_assembly_open failed\n");
-	}
-	int retval = _mono_jit_exec(domain, assembly, 0, NULL);
-	LogConsole("mono_jit_exec result = %d\n", retval);
-	*/
+	DetourTransactionBegin();
+	DetourUpdateThread(GetCurrentThread());
+	DetourAttach(&(PVOID&)pPlayerLoop, hkPlayerLoop);
+	bool success = DetourTransactionCommit() == NO_ERROR;
+	LogConsole("Detouring PlayerLoop: %d\n", success);
+
 	FreeLibrary(hGame);
 	return 0;
 }
