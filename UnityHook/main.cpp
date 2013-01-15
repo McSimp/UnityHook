@@ -11,7 +11,7 @@ tmono_class_get_method_from_name _mono_class_get_method_from_name = NULL;
 tmono_class_from_name _mono_class_from_name = NULL;
 
 typedef int (*tPlayerLoop) (int, int, int);
-tPlayerLoop pPlayerLoop = reinterpret_cast<tPlayerLoop>(0x4378D0);
+tPlayerLoop pPlayerLoop = reinterpret_cast<tPlayerLoop>(0x14878D0);
 
 #define GET_MONO_FUNC(name) _ ## name = *((t ## name*)GetProcAddress(hGame, #name)); LogConsole("%s = 0x%X\n", #name, _ ## name); 
 
@@ -41,17 +41,13 @@ void LogConsole( const char *szFmt, ... )
 }
 
 bool loadedExtern = false;
-MonoMethod* method = NULL;
+int calls = 0;
 
 int hkPlayerLoop(int unk1, int unk2, int unk3)
 {
 	_asm pushad;
 	
-	if(loadedExtern)
-	{
-		_mono_runtime_invoke(method, NULL, NULL, NULL);
-	}
-	else
+	if(!loadedExtern && ++calls > 100)
 	{
 		MonoDomain* domain = _mono_domain_get();
 		LogConsole("MonoDomain = 0x%X\n", domain);
@@ -59,7 +55,10 @@ int hkPlayerLoop(int unk1, int unk2, int unk3)
 		MonoAssembly* assembly = _mono_domain_assembly_open(domain, "InjectedManagedLib.dll");
 		MonoImage* image = _mono_assembly_get_image(assembly);
 		MonoClass* mclass = _mono_class_from_name(image, "InjectedManagedLib", "InjectedLib");
-		method = _mono_class_get_method_from_name(mclass, "DoTheThing", 0);
+		MonoMethod* method = _mono_class_get_method_from_name(mclass, "Initialize", 0);
+		
+		_mono_runtime_invoke(method, NULL, NULL, NULL);
+		LogConsole("InjectedLib::Initialize() called in game");
 
 		loadedExtern = true;
 	}
@@ -68,11 +67,29 @@ int hkPlayerLoop(int unk1, int unk2, int unk3)
 	return pPlayerLoop(unk1, unk2, unk3);
 }
 
+MonoObject* det_mono_runtime_invoke(MonoMethod *method, void *obj, void **params, MonoObject **exc)
+{
+	_asm pushad;
+	LogConsole("mono_runtime_invoke on '%s'\n", method->name);
+	if(!strcmp("OnGUI", method->name))
+	{
+		_asm nop;
+	}
+	_asm popad;
+	return _mono_runtime_invoke(method, obj, params, exc);
+}
+
+
 DWORD WINAPI onAttach(LPVOID lpThreadParameter)
 {
 	AllocConsole();
 	LogConsole("== Loaded ==\n");
-	HMODULE hGame = LoadLibrary("AngryBots.exe");
+
+	char path[2048];
+	GetModuleFileNameA(NULL, path, 2048);
+	LogConsole("Parent executable = %s\n", path);
+
+	HMODULE hGame = LoadLibrary(path);
 	LogConsole("hGame = 0x%X\n", hGame);
 
 	GET_MONO_FUNC(mono_domain_get)
@@ -87,6 +104,20 @@ DWORD WINAPI onAttach(LPVOID lpThreadParameter)
 	DetourAttach(&(PVOID&)pPlayerLoop, hkPlayerLoop);
 	bool success = DetourTransactionCommit() == NO_ERROR;
 	LogConsole("Detouring PlayerLoop: %d\n", success);
+
+	/*
+	LogConsole("Detouring mono_runtime_invoke...\n");
+	DWORD* addrOfAddrOfFunc = (DWORD*)GetProcAddress(hGame, "mono_runtime_invoke");
+	DWORD dwProtect;
+	if(VirtualProtect(addrOfAddrOfFunc, sizeof(DWORD), PAGE_EXECUTE_READWRITE, &dwProtect) != 0)
+	{
+		LogConsole("Doing the overwriting...\n");
+		(*addrOfAddrOfFunc) = (DWORD)&det_mono_runtime_invoke;
+	}
+	LogConsole("Finished detouring\n");
+	*/
+
+	//_asm int 3;
 
 	FreeLibrary(hGame);
 	return 0;

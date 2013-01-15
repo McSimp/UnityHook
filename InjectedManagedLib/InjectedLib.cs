@@ -2,44 +2,33 @@
 
 namespace InjectedManagedLib
 {
+    public class InjectedScript : MonoBehaviour
+    {
+        void Start()
+        {
+            System.Diagnostics.Debug.WriteLine("=== I've been started ===");
+        }
+
+        void Update()
+        {
+            
+        }
+
+        void OnGUI()
+        {
+            if(GUI.Button(new Rect(10, 10, 150, 100), "I am a button"))
+            {
+                print("You clicked the button!");
+            }
+        }
+    }
+
     public class InjectedLib
     {
-        static bool goingUp = false;
-        static int numCalls = 0;
-
-        static void DoTheThing()
+        static void Initialize()
         {
-            numCalls++;
-            if (numCalls < 200)
-            {
-                return;
-            }
-
-            GameObject player = GameObject.FindGameObjectWithTag("Player");
-            if (player.Equals(null))
-            {
-                System.Diagnostics.Debug.WriteLine("Couldn't find player!");
-                return;
-            }
-
-            Vector3 scalar = new Vector3(0.1f, 0.1f, 0.1f);
-            if (goingUp)
-            {
-                player.transform.localScale += scalar;
-            }
-            else
-            {
-                player.transform.localScale -= scalar;
-            }
-
-            if (player.transform.localScale.x >= 2.0f)
-            {
-                goingUp = false;
-            }
-            else if (player.transform.localScale.x <= 0.2f)
-            {
-                goingUp = true;
-            }
+            GameObject scriptContainer = new GameObject("InjectedScriptContainer");
+            scriptContainer.AddComponent(typeof(InjectedScript));
         }
     }
 }
